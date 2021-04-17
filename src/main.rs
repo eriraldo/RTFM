@@ -1,13 +1,17 @@
 
 use std::process::Command;
-//pa tarea 3
 use std::thread;
 use std::time::Duration;
 use std::env;
-//
+
 
 
 fn main() {
+    //To run this program you need the following arguments
+	//amountOfThreads, executable, ip, port, clientCommand
+
+    //Example of how to run stressCMD
+    //cargo run 5 ./ftpclient 127.0.0.1 8080 ls
     let argv: Vec<std::string::String> = std::env::args().collect();
     let mut newvec = argv.to_vec();
     let loops:i32 = argv[1].parse().unwrap();
@@ -21,7 +25,7 @@ fn main() {
             i+=1;
         }
     });
-    while(true){
+    while(true){//I need an infinite loop, otherwise the main thread ends, and so will the other ones created.
 
     }
 
