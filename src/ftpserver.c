@@ -21,7 +21,6 @@
 #include 	<pthread.h>
 
 
-
 #define 	MAXLINE 	4096
 #define		LISTENQ		1024
 #define		TRUE		1
@@ -31,6 +30,10 @@ struct args {
     int port;
     int listenfd;
 };
+
+static bool pre_thread = false;
+int number_Process = 0;
+pthread_mutex_t new_client_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 //function trims leading and trailing whitespaces
 void trim(char *str)
@@ -79,7 +82,6 @@ int get_client_ip_port(char *str, char *client_ip, int *client_port){
 int setup_data_connection(int *fd, char *client_ip, int client_port, int server_port){
 	
 	struct sockaddr_in cliaddr, tempaddr;
-
 	if ( (*fd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
     	perror("socket error");
     	return -1;
@@ -183,12 +185,12 @@ int do_list(int controlfd, int datafd, char *input){
     }
 
     while (fgets(sendline, MAXLINE, in) != NULL) {
-        write(datafd, sendline, strlen(sendline));
+        write(controlfd, sendline, strlen(sendline)); //DEBERIA SER EN DATAFD EN LUGAR DE CONTROL FD
         printf("%s", sendline);
         bzero(sendline, (int)sizeof(sendline));
     }
-
-    sprintf(sendline, "200 Command OK");
+	//sleep(0.2);
+    sprintf(sendline, "200");
     write(controlfd, sendline, strlen(sendline));
     pclose(in);
 
@@ -227,12 +229,12 @@ int do_retr(int controlfd, int datafd, char *input){
     }
 
     while (fgets(sendline, MAXLINE, in) != NULL) {
-        write(datafd, sendline, strlen(sendline));
+        write(controlfd, sendline, strlen(sendline));
         //printf("%s", sendline);
         bzero(sendline, (int)sizeof(sendline));
     }
-
-    sprintf(sendline, "200 Command OK");
+	sleep(0.1); //para enviar bien el código
+    sprintf(sendline, "200");
     write(controlfd, sendline, strlen(sendline));
     pclose(in);
     return 1;
@@ -263,8 +265,13 @@ int do_stor(int controlfd, int datafd, char *input){
         return -1;
     }
 
-
-    while((n = read(datafd, recvline, MAXLINE)) > 0){
+	sprintf(sendline, "200 Command OK");
+    write(controlfd, sendline, strlen(sendline));
+    while((n = read(controlfd, recvline, MAXLINE)) > 0){
+		char *temp = strtok(recvline, " "); 
+		if(strcmp(temp,"200") == 0){
+			break;
+		}
         fseek(fp, p, SEEK_SET);
         fwrite(recvline, 1, n, fp);
         p = p + n;
@@ -272,141 +279,163 @@ int do_stor(int controlfd, int datafd, char *input){
         bzero(recvline, (int)sizeof(recvline)); 
     }
 
-    sprintf(sendline, "200 Command OK");
-    write(controlfd, sendline, strlen(sendline));
+    
     fclose(fp);
     return 1;
 }
 
-void * aaa (void *input){
-
-	printf("listenfd: %d\n", ((struct args*)input)->listenfd);
-    printf("port: %d\n", ((struct args*)input)->port);
-	return NULL;
-}
-
-void * test(void* input){
+void * handle_conn(void* input){
 	int	listenfd, connfd, port;
 	listenfd = ((struct args*)input)->listenfd;
 	port = ((struct args*)input)->port;
 	while(1){
+		//pthread_mutex_lock(&new_client_mutex);
 		connfd = accept(listenfd, (struct sockaddr*)NULL, NULL);
+		
 		printf("New Client Detected...\n");
 		//child process---------------------------------------------------------------
 		
-			close(listenfd);
-
-			int datafd, code, x = 0, client_port = 0;
-			char recvline[MAXLINE+1];
-			char client_ip[50], command[1024];			
-
-			while(1){
-				bzero(recvline, (int)sizeof(recvline));
-				bzero(command, (int)sizeof(command));
-
-				//get client's data connection port
-    			if((x = read(connfd, recvline, MAXLINE)) < 0){
-    				break;
-    			}
-    			printf("*****************\n%s \n", recvline);
-                if(strcmp(recvline, "QUIT") == 0){
-                    printf("Quitting...\n");
-                    char goodbye[1024];
-                    sprintf(goodbye,"221 Goodbye");
-                    write(connfd, goodbye, strlen(goodbye));
-                    close(connfd);
-                    break;
-                }
-    			get_client_ip_port(recvline, client_ip, &client_port);
-
-    			if((setup_data_connection(&datafd, client_ip, client_port, port)) < 0){
-    				break;
-    			}
-
-    			if((x = read(connfd, command, MAXLINE)) < 0){
-    				break;
-    			}
-
-    			printf("-----------------\n%s \n", command);
-
-    			code = get_command(command);
-    			if(code == 1){
-    				do_list(connfd, datafd, command);
-    			}else if(code == 2){
-    				do_retr(connfd, datafd, command);
-    			}else if(code == 3){
-    				do_stor(connfd, datafd, command);
-    			}else if(code == 4){
-                    char reply[1024];
-                    sprintf(reply, "550 Filename Does Not Exist");
-                    write(connfd, reply, strlen(reply));
-                    close(datafd);
-                    continue;
-                }               
-
-    			close(datafd);
-    			
-
-			}
-    		printf("Exiting Child Process...\n");
-    		close(connfd);
-    		_exit(1);
+		close(listenfd);
+		//pthread_mutex_unlock(&new_client_mutex);
+		int datafd, code, x = 0, client_port = 0;
+		char recvline[MAXLINE+1];
+		char client_ip[50], command[1024];			
 		
-		//end child process-------------------------------------------------------------
+		while(1){
+			bzero(recvline, (int)sizeof(recvline));				
+			bzero(command, (int)sizeof(command));
+			
+			//get client's data connection port
+			if((x = read(connfd, recvline, MAXLINE)) < 0){
+				//printf("dentro: ",recvline);
+				break;
+			}
+			//printf("fuera",recvline);
+			sleep(0.1);				
+			printf("*****************\n%s \n", recvline);
+			//char *temp = strtok(recvline, " "); 
+			//printf("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+			if(strcmp(recvline, "QUIT") == 0){
+				printf("Quitting...\n");					
+				char goodbye[1024];
+				sleep(0.1);
+				sprintf(goodbye,"221 Goodbye");			
+				write(connfd, goodbye, strlen(goodbye));
+				sleep(0.1); //necesario para conectar más clientes
+				close(connfd);
+				break;
+			}
+				
+			
+			
+			printf("NO ES QUIT LO QUE ESTA LEYENDO");
+			get_client_ip_port(recvline, client_ip, &client_port);
+			/* ESTO NO DEBERÍA ESTAR COMENTADO
+			if((setup_data_connection(&datafd, client_ip, client_port, port)) < 0){
+				break;
+			}	*/	
+			(setup_data_connection(&datafd, client_ip, client_port, port));		//Se deja sin if la jugada
+			if((x = read(connfd, command, MAXLINE)) < 0){
+				break;
+			}
+			printf("-----------------\n%s \n", command);
+			code = get_command(command);
+			if(code == 1){
+				do_list(connfd, datafd, command);
+			}else if(code == 2){
+				do_retr(connfd, datafd, command);
+			}else if(code == 3){
+				do_stor(connfd, datafd, command);
+			}else if(code == 4){
+				char reply[1024];
+				sprintf(reply, "550 Filename Does Not Exist");
+				write(connfd, reply, strlen(reply));
+				close(datafd);
+				continue;
+			}               
+			close(datafd);
+		}
+		printf("Exiting Child Process...\n");
 		close(connfd);
+		break;
+	
+		//end child process-------------------------------------------------------------
 	}
 	return NULL;
 }
 
 
-void job (int port){
-	int	listenfd;
-	struct sockaddr_in	servaddr;
-	pid_t pid;
+void* job (int port){
+	while(1){
+		int	listenfd;
+		struct sockaddr_in	servaddr;
+		pid_t pid;
 
-	listenfd = socket(AF_INET, SOCK_STREAM, 0);
+		int flag = 1;
+		listenfd = socket(AF_INET, SOCK_STREAM, 0);
+		if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag)) < 0)
+			error("setsockopt(SO_REUSEADDR) failed");
 
-	bzero(&servaddr, sizeof(servaddr));
-	servaddr.sin_family      = AF_INET;
-	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	servaddr.sin_port        = htons(port);
-	
-	bind(listenfd, (struct sockaddr*) &servaddr, sizeof(servaddr));
+		bzero(&servaddr, sizeof(servaddr));
+		servaddr.sin_family      = AF_INET;
+		servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+		servaddr.sin_port        = htons(port);
+		
+		bind(listenfd, (struct sockaddr*) &servaddr, sizeof(servaddr));
 
-	listen(listenfd, LISTENQ);
+		listen(listenfd, LISTENQ);
 
-	struct args *hilo = (struct args *)malloc(sizeof(struct args));
-	hilo->listenfd= listenfd;
-	hilo->port=port;
-	pthread_t t;
-	pthread_t t2;
+		struct args *hilo = (struct args *)malloc(sizeof(struct args));
+		hilo->listenfd= listenfd;
+		hilo->port=port;
 
-	pthread_create(&t, NULL, test, (void*) hilo);
-	pthread_create(&t2, NULL, test, (void*) hilo);
-
+		if(!pre_thread){	
+			printf("Making pre-forks\n");
+			for (int i = 0; i < number_Process; ++i) {
+				int p = fork();
+				if (p == 0) break;
+				if (p < 0) {printf("Couldn't initialize fork.\n");}
+			}
+		}else{
+			printf("Making pre-threads\n");
+			for(int i = 0;i<number_Process;i++){
+				pthread_t t;
+				if(pthread_create(&t, NULL, handle_conn, (void*) hilo)){
+					printf("\nError in creation of the thread #%d\n", i);
+					
+				}
+				else printf("\nThread #%d created succesfully.\n", i);
+				
+			}
+		}
+		handle_conn((void*)hilo);
+	}
+	return NULL;
 }
-
-
-
 
 int main(int argc, char **argv){
 
-	int	port;
-	if(argc != 2){
+	//To run this program you need the following arguments
+	//port, amountOfProcess, (pt|pf)
+	//if you choose 'pt', the server will create pre-threads to handle clients
+	//otherwise, it'll use forks.
+
+	//Example: ./ftpserver 8080 5 pt
+	int port;
+	if(argc != 4){
 		printf("Invalid Number of Arguments...\n");
 		printf("Usage: ./ftpserver <listen-port>\n");
 		exit(-1);
 	}
-	
-	sscanf(argv[1], "%d", &port);
-	job(port);
-	//pthread_create(&t, NULL, job, p_port);
-	//pthread_create(&t2, NULL, job, p_port);
-
-	while(1){
-		
+	sscanf(argv[3], "%d", &port);
+	sscanf(argv[1], "%d", &number_Process);
+	number_Process-=1;
+	if(strcmp(argv[2],"pt")==0){
+		pre_thread = true;
+		printf("PRE-THREAD\n");
+	}else{
+		printf("PRE-FORKED\n");
 	}
-	//job(port);
-	
-	
+	job(port);	
 }
+
