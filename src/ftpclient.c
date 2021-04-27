@@ -1,5 +1,3 @@
-//myclient.c source file
-
 #include 	<sys/types.h>
 #include 	<sys/socket.h>
 #include 	<strings.h>
@@ -59,7 +57,7 @@ int get_user_input(char *buffer){
 
     return 1;
 }
-
+//gets the port and the ip from the server and prints it
 int get_port_string(char *str, char *ip, int n5, int n6){
     int i = 0;
     char ip_temp[1024];
@@ -74,7 +72,7 @@ int get_port_string(char *str, char *ip, int n5, int n6){
     sprintf(str, "PORT %s,%d,%d", ip_temp, n5, n6);
     return 1;
 }
-
+//validates the command
 int check_command(char *command){
 	int i = 0, len = strlen(command), space = FALSE, count = 0;
 	for(i = 0; i < len; i++){
@@ -91,12 +89,13 @@ int check_command(char *command){
 	if(count <= 1){return 1;}
 	else{return -1;}
 }
-
+//check what command is going to be sent to the server
 int get_command(char *command, char* args){    
 	int value, check = -1;
 	char copy[1024];	
 	while(check < 0){
     	char *str;
+        printf("ARGS: %s\n", args);
         if(strcmp(args,"")==0){
             if(get_user_input(command) < 0){
                 printf("Cannot Read Command...\nPlease Try Again...\n");
@@ -109,9 +108,10 @@ int get_command(char *command, char* args){
                 bzero(command, (int)sizeof(command));
                 continue;
             }
-            
+            printf("Command1: %s\n", command);
             trim(command);
             strcpy(copy, command);
+            printf("Command2: %s\n", command);
 
             if(check_command(copy) < 0){
                     printf("Invalid Format...\nPlease Try Again...\n");
@@ -121,23 +121,25 @@ int get_command(char *command, char* args){
             }
         }
     	
-    	
     	char delimit[]=" \t\r\n\v\f";
         if(strcmp(args,"")==0){
     	    str = strtok(copy, delimit);
         }else{
-            str = strtok(args,delimit);
-            sleep(5);
+            char delimit2[]=" \t\r\n\v\f";
+            str = strtok(args,delimit2);
+            sleep(3);
         }
-    	if((strcmp(str, "ls") == 0) || (strcmp(str, "get") == 0) || (strcmp(str, "put") == 0) || (strcmp(str, "quit") == 0)){
+    	if((strcmp(str, "ls") == 0) || (strcmp(str, "get") == 0) || (strcmp(str, "put") == 0) || (strcmp(str, "quit") == 0) || (strcmp(str, "cd") == 0) || (strcmp(str, "pwd") == 0)){
     		check = 1;
 
 
-            //populated value valriable to indicate back to main which input was entered
+            //populated value variable to indicate back to main which input was entered
             if(strcmp(str, "ls") == 0){value = 1;}
             else if(strcmp(str, "get") == 0){value = 2;}
             else if(strcmp(str, "put") == 0){value = 3;}
             else if(strcmp(str, "quit") == 0){value = 4;}
+            else if(strcmp(str, "cd") == 0){value = 5;}
+            else if(strcmp(str, "pwd") == 0){value =6;}
     	}else{
     		printf("Incorrect Command Entered...\nPlease Try Again...\n");
             bzero(command, strlen(command));
@@ -147,7 +149,7 @@ int get_command(char *command, char* args){
     }
 	return value;
 }
-
+//convert is needed so that the server know which is the client port
 int convert(uint16_t port, int *n5, int *n6){
     int i = 0;
     int x = 1;
@@ -170,7 +172,7 @@ int convert(uint16_t port, int *n5, int *n6){
     }
     return 1;
 }
-
+// takes the ip and the port
 int get_ip_port(int fd, char *ip, int *port){
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -180,7 +182,7 @@ int get_ip_port(int fd, char *ip, int *port){
     *port = (uint16_t)ntohs(addr.sin_port);
     return 1;
 }
-
+//takes the file that is going to be used for get or put commands
 int get_filename(char *input, char *fileptr){
     char cpy[1024];
     char *filename = NULL;
@@ -197,13 +199,14 @@ int get_filename(char *input, char *fileptr){
         return 1;
     }
 }
-
+//This function checks the codes received from the server
 bool check_recvline(char* pch){
     bool check = false;
     char * recvline = strtok(pch, "\r\n");
     while (recvline != NULL)
         {
-            if (strcmp(recvline,"200")==0){
+            //printf("%s\n", recvline);
+            if (strcmp(recvline,"200")==0 || strcmp(recvline,"450")==0 || strcmp(recvline,"550")==0 || strcmp(recvline,"451")==0){
                 check = true;
                 break;
             }
@@ -211,7 +214,8 @@ bool check_recvline(char* pch){
         }
     return check;
 }
-
+// this function sends the ls command to the server and lists all the files from the current directory 
+//of the server
 int do_ls(int controlfd, int datafd, char *input){
     
     char filelist[256], str[MAXLINE+1], recvline[MAXLINE+1], *temp;
@@ -246,7 +250,7 @@ int do_ls(int controlfd, int datafd, char *input){
         if(control_finished == FALSE){FD_SET(controlfd, &rdset);}
         if(data_finished == FALSE){FD_SET(datafd, &rdset);}
         select(maxfdp1, &rdset, NULL, NULL, NULL);
-        if(FD_ISSET(controlfd, &rdset)){ //utiliza controlfd en lugar de datafd            
+        if(FD_ISSET(controlfd, &rdset)){             
             printf("Server Data Response:\n");
             while(read(controlfd, recvline, MAXLINE) > 0){                
                 temp = strtok(recvline, " ");                             
@@ -271,8 +275,31 @@ int do_ls(int controlfd, int datafd, char *input){
     bzero(str, (int)sizeof(str));
     return 1;
 }
+// this function sends the pwd command to the server and gets the current servers directory path
+int do_pwd(int controlfd, int datafd, char *input){
+    
+    char str[MAXLINE+1], recvline[MAXLINE+1];
+    bzero(recvline, (int)sizeof(recvline));
+    bzero(str, (int)sizeof(str));
+    fd_set rdset;
+    sprintf(str, "PWD");
+    FD_ZERO(&rdset);
+    FD_SET(controlfd, &rdset);
 
+    
+    write(controlfd, str, strlen(str));
+    read(controlfd, recvline, MAXLINE);
+    printf("Server Data Response: %s \n", recvline); 
+    FD_CLR(controlfd, &rdset);
 
+    bzero(recvline, (int)sizeof(recvline));
+    bzero(str, (int)sizeof(str));
+
+    return 1;
+}
+
+//this fuction copies the archive in the server client directory 
+//to the actual client directory 
 
 int do_get(int controlfd, int datafd, char *input){
     char filename[256], str[MAXLINE+1], recvline[MAXLINE+1], *temp, temp1[1024];
@@ -327,18 +354,74 @@ int do_get(int controlfd, int datafd, char *input){
         if(data_finished == FALSE){FD_SET(datafd, &rdset);}
         select(maxfdp1, &rdset, NULL, NULL, NULL);
 
-        if(FD_ISSET(controlfd, &rdset)){ //utiliza controlfd en lugar de datafd            
-            //printf("Server Data Response:\n");
-            while(n = read(controlfd, recvline, MAXLINE) > 0){
-                temp = strtok(recvline, " ");                
+        if(FD_ISSET(controlfd, &rdset)){
+            bzero(recvline, (int)sizeof(recvline));
+            while((n = read(controlfd, recvline, MAXLINE)) > 0){
+                fseek(fp, p, SEEK_SET);
+                fwrite(recvline, 1, n, fp);
+                p = p + n;
+                temp = strtok(recvline, " ");
+                if(check_recvline(temp)){
+                    break;
+                }
+                bzero(recvline, (int)sizeof(recvline)); 
+            }
+            data_finished = TRUE;
+            FD_CLR(datafd, &rdset);
+            control_finished = TRUE;
+            bzero(recvline, (int)sizeof(recvline));
+            FD_CLR(controlfd, &rdset);
+        }
+        if((control_finished == TRUE) && (data_finished == TRUE)){
+            break;
+        }
+    }
+    bzero(filename, (int)sizeof(filename));
+    bzero(recvline, (int)sizeof(recvline));
+    bzero(str, (int)sizeof(str));
+    fclose(fp);
+    return 1;
+}
+//this function sends the cd command to the server and changes the actual server directory to a new one
+//specified
+int do_cd(int controlfd, int datafd, char *input){
+    
+    char filename[256], str[MAXLINE+1], recvline[MAXLINE+1], *temp, temp1[1024];
+    bzero(filename, (int)sizeof(filename));
+    bzero(recvline, (int)sizeof(recvline));
+    bzero(str, (int)sizeof(str));
+    int n = 0, p = 0;
+
+    fd_set rdset;
+    int maxfdp1, data_finished = FALSE, control_finished = FALSE;
+
+    get_filename(input, filename);
+    sprintf(str, "CD %s", filename);
+    bzero(filename, (int)sizeof(filename));
+    FD_ZERO(&rdset);
+    FD_SET(controlfd, &rdset);
+    FD_SET(datafd, &rdset);
+    if(controlfd > datafd){
+        maxfdp1 = controlfd + 1;
+    }else{
+        maxfdp1 = datafd + 1;
+    }
+
+    write(controlfd, str, strlen(str));
+    while(1){
+        if(control_finished == FALSE){FD_SET(controlfd, &rdset);}
+        if(data_finished == FALSE){FD_SET(datafd, &rdset);}
+        select(maxfdp1, &rdset, NULL, NULL, NULL);
+
+        if(FD_ISSET(controlfd, &rdset)){           
+            printf("Server Data Response:\n");
+            while(read(controlfd, recvline, MAXLINE) > 0){                
+                temp = strtok(recvline, " ");                             
+                printf("%s", recvline); 
                 if(check_recvline(temp)){
                     printf("Exiting...\n");
                     break;
                 }   
-                //printf("Server AAAAAA: %s\n", temp);
-                fseek(fp, p, SEEK_SET);
-                fwrite(recvline, 1, n, fp);
-                p = p + n; 
                 bzero(recvline, (int)sizeof(recvline)); 
             }
             data_finished = TRUE;
@@ -354,22 +437,17 @@ int do_get(int controlfd, int datafd, char *input){
     bzero(filename, (int)sizeof(filename));
     bzero(recvline, (int)sizeof(recvline));
     bzero(str, (int)sizeof(str));
-    fclose(fp);
     return 1;
 }
-
+//this fuction copies the archive in the actual client directory 
+//to the actual server directory 
 int do_put(int controlfd, int datafd, char *input){
     char filename[256], str[MAXLINE+1], recvline[MAXLINE+1], sendline[MAXLINE+1], *temp, temp1[1024];
     bzero(filename, (int)sizeof(filename));
     bzero(recvline, (int)sizeof(recvline));
     bzero(str, (int)sizeof(str));
-    //int n = 0, p = 0;
-
     fd_set wrset, rdset;
     int maxfdp1, data_finished = FALSE, control_finished = FALSE;
-
-    
-
     if(get_filename(input, filename) < 0){
         printf("No filename Detected...\n");
         char send[1024];
@@ -382,7 +460,6 @@ int do_put(int controlfd, int datafd, char *input){
     }else{
         sprintf(str, "STOR %s", filename);
     }   
-
     sprintf(temp1, "cat %s", filename);
     bzero(filename, (int)sizeof(filename));
 
@@ -398,8 +475,6 @@ int do_put(int controlfd, int datafd, char *input){
     }else{
         maxfdp1 = datafd + 1;
     }
-
-
     FILE *in;
     extern FILE *popen();
 
@@ -407,35 +482,16 @@ int do_put(int controlfd, int datafd, char *input){
         printf("Cannot Run Command\nExiting...\n");
         return -1;
     }
-
-
     write(controlfd, str, strlen(str));
     while(1){
         if(control_finished == FALSE){FD_SET(controlfd, &wrset);}
         if(data_finished == FALSE){FD_SET(datafd, &wrset);}
         select(maxfdp1, &rdset, &wrset, NULL, NULL);
-
-        if(FD_ISSET(controlfd, &wrset)){
-            bzero(recvline, (int)sizeof(recvline));
-            read(controlfd, recvline, MAXLINE);
-            printf("Server Control Response: %s\n", recvline);
-            temp = strtok(recvline, " ");
-            if(atoi(temp) != 200){
-                printf("File Error...\nExiting...\n");
-                break;
-            }
-            control_finished = TRUE;
-            bzero(recvline, (int)sizeof(recvline));
-            FD_CLR(controlfd, &wrset);
-        }
         FD_SET(controlfd, &wrset);
-        if(FD_ISSET(controlfd, &wrset)){ //utiliza controlfd en lugar de datafd            
-            //printf("Server Data Response:\n");
-            
+        if(FD_ISSET(controlfd, &wrset)){           
             bzero(sendline, (int)sizeof(sendline));
             while(fgets(sendline, MAXLINE, in) != NULL){
                 write(controlfd, sendline, strlen(sendline));
-                //printf("%s", sendline);
                 bzero(sendline, (int)sizeof(sendline));
             }
             data_finished = TRUE;
@@ -443,10 +499,9 @@ int do_put(int controlfd, int datafd, char *input){
             FD_CLR(datafd, &wrset);
             FD_CLR(controlfd, &wrset);   
             close(datafd);         
-        }/*
-        printf("ENVIADO\n");*/
+        }
         sleep(0.2);
-        sprintf(sendline, "200"); //finaliza enviando un mensaje al servidor
+        sprintf(sendline, "200"); //ends sending a 200 to the server
         write(controlfd, sendline, strlen(sendline));
         if((control_finished == TRUE) && (data_finished == TRUE)){
             break;
@@ -456,19 +511,18 @@ int do_put(int controlfd, int datafd, char *input){
 }
 
 int main(int argc, char **argv){
-
+    //./ftpclient -h 8080 [command]
 	int server_port, controlfd, listenfd, datafd, code, n5, n6, x;
     uint16_t port;
 	struct sockaddr_in servaddr, data_addr;
 	char command[1024], ip[50], str[MAXLINE+1];
     char args[100] = "";
-	if(argc != 3){
-        if(argc!=4){        
-            printf("Invalid Number of Arguments...\n");
-            printf("Usage: ./ftpclient <server-ip> <server-listen-port>\n");
-            exit(-1);
-        }
-	}
+    if(!(argc>=3 && argc <5)){        
+        printf("Invalid Number of Arguments...\n");
+        printf("Usage: ./ftpclient -h <host_port> [command]\n");
+        exit(-1);
+    }
+	
 
     if(argc==4){
        strncpy(args,argv[3],99);
@@ -485,7 +539,7 @@ int main(int argc, char **argv){
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_port   = htons(server_port);
-    if (inet_pton(AF_INET, argv[1], &servaddr.sin_addr) <= 0){
+    if (inet_pton(AF_INET, "127.0.0.1", &servaddr.sin_addr) <= 0){
     	perror("inet_pton error");
     	exit(-1);
     }
@@ -527,6 +581,7 @@ int main(int argc, char **argv){
         //get command from user
         code = get_command(command, args);
         
+        
         //user has entered quit
         if(code == 4){
             char quit[1024];
@@ -537,6 +592,7 @@ int main(int argc, char **argv){
             printf("Server Response: %s\n", quit);
             break;
         }
+        strcpy(command, argv[3]);
         printf("command: %s\n", command);
 
         //send PORT n1,n2,n3,n4,n5,n6
@@ -548,7 +604,6 @@ int main(int argc, char **argv){
 
         datafd = accept(listenfd, (struct sockaddr*)NULL, NULL);
         int test = data_addr.sin_port;
-        printf("PORT FROM 0: %d\n", test);
 
         printf("Data connection Established...\n");
 
@@ -567,7 +622,17 @@ int main(int argc, char **argv){
                 close(datafd);
                 continue;
             }
-        }
+        }else if(code == 5){
+            if(do_cd(controlfd, datafd, command) < 0){
+                close(datafd);
+                continue;
+            }
+        }else if(code == 6){
+            if(do_pwd(controlfd, datafd, command) < 0){
+                close(datafd);
+                continue;
+            }
+        }           
         close(datafd);
     }
     close(controlfd);	

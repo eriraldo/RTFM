@@ -1,5 +1,5 @@
 [package]
-name = "Basic-FTP-Client-Server"
+name = "StressCMD"
 version = "0.1.0"
 authors = ["Erick Elizondo <erick.elizondo20@gmail.com>"]
 edition = "2018"
