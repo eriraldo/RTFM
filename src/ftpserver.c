@@ -306,6 +306,7 @@ int do_retr(int controlfd, int datafd, char *input){
     	write(controlfd, sendline, strlen(sendline));
 		return -1;
 	}
+	pthread_mutex_lock(&new_client_mutex);
 	FILE *in;
     extern FILE *popen();
 
@@ -323,6 +324,7 @@ int do_retr(int controlfd, int datafd, char *input){
     sprintf(sendline, "200");
     write(controlfd, sendline, strlen(sendline));
     pclose(in);
+	pthread_mutex_unlock(&new_client_mutex);
     return 1;
 }
 //this fuction is equivalent to a "put" so it copies the archive in the actual client directory 
@@ -352,6 +354,7 @@ int do_stor(int controlfd, int datafd, char *input){
 	}
 
 	sprintf(temp1, "%s-out", filename);
+	pthread_mutex_lock(&new_client_mutex);
 	FILE *fp;
     if((fp = fopen(temp1, "w")) == NULL){
         perror("file error");
@@ -369,8 +372,9 @@ int do_stor(int controlfd, int datafd, char *input){
         p = p + n;
         bzero(recvline, (int)sizeof(recvline)); 
     }
-
+    
     fclose(fp);
+	pthread_mutex_unlock(&new_client_mutex);
     return 1;
 }
 //handle_conn handles the connection between the server and the client
