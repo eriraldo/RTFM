@@ -592,7 +592,9 @@ int main(int argc, char **argv){
             printf("Server Response: %s\n", quit);
             break;
         }
-        strcpy(command, argv[3]);
+	if(argc == 4){
+            strcpy(command, argv[3]);
+        }
         printf("command: %s\n", command);
 
         //send PORT n1,n2,n3,n4,n5,n6
