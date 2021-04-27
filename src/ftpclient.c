@@ -108,10 +108,8 @@ int get_command(char *command, char* args){
                 bzero(command, (int)sizeof(command));
                 continue;
             }
-            printf("Command1: %s\n", command);
             trim(command);
             strcpy(copy, command);
-            printf("Command2: %s\n", command);
 
             if(check_command(copy) < 0){
                     printf("Invalid Format...\nPlease Try Again...\n");
